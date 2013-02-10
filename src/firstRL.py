@@ -16,6 +16,12 @@ MAX_LIGHT_RADIUS = 10
 
 LIMIT_FPS = 20  #20 frames-per-second maximum
 
+#game state strings
+STRING_EXIT = 'exit'
+STRING_NO_ACTION = 'didnt-take-turn'
+STRING_PLAYING = 'playing'
+
+
 #colors
 color_dark_wall = libtcod.Color(0, 0, 100)
 color_dark_ground = libtcod.Color(50, 50, 150)
@@ -25,7 +31,9 @@ color_light_ground = libtcod.Color(200, 180, 50)
 class Object:
     #this is a generic object: the player, a monster, an item, the stairs...
     #it's always represented by a character on screen.
-    def __init__(self, x, y, char, color):
+    def __init__(self, x, y, char, name, color, blocks=False):
+        self.name = name
+        self.blocks = blocks
         self.x = x
         self.y = y
         self.char = char
@@ -33,7 +41,7 @@ class Object:
  
     def move(self, dx, dy):
         #move by the given amount if not blocked
-        if not map[self.x + dx][self.y + dy].blocked:
+        if not is_blocked(self.x + dx, self.y + dy):
             self.x += dx
             self.y += dy
  
@@ -114,6 +122,7 @@ def make_map():
     player.x = 25
     player.y = 23
     
+#runtime functions
 def render_all():
     global fov_map, color_dark_wall, color_light_wall
     global color_dark_ground, color_light_ground
@@ -159,24 +168,39 @@ def handle_keys():
         libtcod.console_set_fullscreen(not libtcod.console_is_fullscreen())
  
     elif key.vk == libtcod.KEY_ESCAPE:
-        return True  #exiting game
+        return STRING_EXIT  #exit game
  
-    #movement keys
-    if libtcod.console_is_key_pressed(libtcod.KEY_UP):
-        player.move(0, -1)
-        fov_recompute = True
+    if game_state == STRING_PLAYING: 
+        #movement keys
+        if libtcod.console_is_key_pressed(libtcod.KEY_UP):
+            player.move(0, -1)
+            fov_recompute = True
+     
+        elif libtcod.console_is_key_pressed(libtcod.KEY_DOWN):
+            player.move(0, 1)
+            fov_recompute = True
+     
+        elif libtcod.console_is_key_pressed(libtcod.KEY_LEFT):
+            player.move(-1, 0)
+            fov_recompute = True
+     
+        elif libtcod.console_is_key_pressed(libtcod.KEY_RIGHT):
+            player.move(1, 0)
+            fov_recompute = True
+        else:
+            return STRING_NO_ACTION
+        
+def is_blocked(x, y):
+    #first test the map tile
+    if map[x][y].blocked:
+        return True
  
-    elif libtcod.console_is_key_pressed(libtcod.KEY_DOWN):
-        player.move(0, 1)
-        fov_recompute = True
+    #now check for any blocking objects
+    for object in objects:
+        if object.blocks and object.x == x and object.y == y:
+            return True
  
-    elif libtcod.console_is_key_pressed(libtcod.KEY_LEFT):
-        player.move(-1, 0)
-        fov_recompute = True
- 
-    elif libtcod.console_is_key_pressed(libtcod.KEY_RIGHT):
-        player.move(1, 0)
-        fov_recompute = True
+    return False
  
  
 #############################################
@@ -188,9 +212,9 @@ libtcod.console_init_root(SCREEN_WIDTH, SCREEN_HEIGHT, 'CaveRL', False)
 con = libtcod.console_new(SCREEN_WIDTH, SCREEN_HEIGHT)
  
 #create object representing the player
-player = Object(SCREEN_WIDTH/2, SCREEN_HEIGHT/2, '@', libtcod.white)
+player = Object(0, 0, '@', 'player', libtcod.white, blocks=True)
  
-#the list of objects with those two
+#the list of objects starting with the player
 objects = [player]
 
 #generate map (at this point it's not drawn to the screen)
@@ -202,8 +226,10 @@ for y in range(MAP_HEIGHT):
     for x in range(MAP_WIDTH):
         libtcod.map_set_properties(fov_map, x, y, not map[x][y].block_sight, not map[x][y].blocked)
  
-#whether fov needs to be recalculated due to movement or tile changes
-fov_recompute = True 
+#global variables
+fov_recompute = True
+game_state = STRING_PLAYING
+player_action = None
 
 #main loop
 while not libtcod.console_is_window_closed():
@@ -216,7 +242,7 @@ while not libtcod.console_is_window_closed():
     for object in objects:
         object.clear()
  
-    #handle keys and exiting game if needed
-    exiting = handle_keys()
-    if exiting:
+    #handle keys and exit game if needed
+    player_action = handle_keys()
+    if player_action == STRING_EXIT:
         break
